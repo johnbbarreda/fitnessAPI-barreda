@@ -1,0 +1,23 @@
+Create a simple Fitness Tracker: 
+Build a fitness tracking application where users can log their workouts and track their progress over time:
+    Each workout document should include name, duration, dateAdded and status
+    A user should be able to register and login only with their email and password
+    User should be able to retrieve their user details
+    A user should be able to add, retrieve, update, and delete workouts
+        Users can only access their own workout documents
+Other requirements:
+    All routes should be able to respond with the correct and appropriate HTTP status codes
+    Create a fitnessApp.json in the project folder and add all available routes:
+        {
+            "endpoints": {
+                "login":"/login",
+                "register":"/register",
+                "addWorkout": "/addWorkout",
+                "getMyWorkouts":"/getMyWorkouts",
+                "updateWorkout":"/updateWorkout",
+                "deleteWorkout":"/deleteWorkout",
+                "completeWorkoutStatus":"/completeWorkoutStatus"
+            }
+        }
+    No admin validation, this is a personal application
+    Do not pass id in the request body
