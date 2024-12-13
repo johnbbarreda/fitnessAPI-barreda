@@ -1,0 +1,325 @@
+controllers/UserController.js:
+const User = require('../models/User');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+
+// Register User
+exports.registerUser = async (req, res) => {
+    const { email, password } = req.body;
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    const user = new User({ email, password: hashedPassword });
+    
+    try {
+        await user.save();
+        res.status(201).json({ message: 'User registered successfully.' });
+    } catch (error) {
+        res.status(400).json({ error: 'Email already exists.' });
+    }
+};
+
+// Login User
+exports.loginUser = async (req, res) => {
+    const { email, password } = req.body;
+    
+    const user = await User.findOne({ email });
+    
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+        return res.status(401).json({ error: 'Invalid credentials.' });
+    }
+    
+    const access = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
+    res.json({ access });
+};
+
+// Get User Details
+exports.getUserDetails = async (req, res) => {
+    try {
+        const userId = req.userId; // Extracted from the authenticated token
+        const user = await User.findById(userId).select('email'); // Only fetch email
+
+        if (!user) {
+            return res.status(404).json({ error: 'User not found.' });
+        }
+
+        // Return user details in the desired format
+        res.json({
+            user: {
+                id: user._id,
+                email: user.email,
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'An error occurred while fetching user details.' });
+    }
+};
+
+controllers/WorkoutController.js:
+const Workout = require('../models/Workout');
+
+// Add Workout
+exports.addWorkout = async (req, res) => {
+    const { name, duration } = req.body;
+    
+    const workout = new Workout({ name, duration, userId: req.userId });
+    
+    try {
+        await workout.save();
+        res.status(201).json({
+            userId: workout.userId,
+            name: workout.name,
+            duration: `${workout.duration} mins`,
+            status: workout.status,
+            _id: workout._id,           
+            dateAdded: workout.dateAdded,     
+        });
+    } catch (error) {
+        res.status(400).json({ error: 'Error adding workout.' });
+    }
+};
+
+
+// Get My Workouts
+exports.getMyWorkouts = async (req, res) => {
+    try {
+        const workouts = await Workout.find({ userId: req.userId });
+
+        const formattedWorkouts = workouts.map(workout => ({
+            _id: workout._id,
+            userId: workout.userId,
+            name: workout.name,
+            duration: `${workout.duration} mins`, 
+            status: workout.status,
+            dateAdded: workout.dateAdded,
+            __v: workout.__v 
+        }));
+
+        res.json({ workouts: formattedWorkouts }); 
+    } catch (error) {
+        res.status(500).json({ error: 'An error occurred while fetching workouts.' });
+    }
+};
+
+
+/// Update Workout
+exports.updateWorkout = async (req, res) => {
+    const { id } = req.params; 
+    const { name, duration } = req.body; 
+
+    try {
+        const updatedWorkout = await Workout.findOneAndUpdate(
+            { _id: id, userId: req.userId },
+            { name, duration },
+            { new: true }
+        );
+
+        if (!updatedWorkout) {
+            return res.status(404).json({ error: 'Workout not found or not authorized.' });
+        }
+
+        res.json({
+            message: "workout updated successfully",
+            updatedWorkout 
+        });
+    } catch (error) {
+        res.status(400).json({ error: 'Error updating workout.' });
+    }
+};
+
+
+
+
+// Delete Workout
+exports.deleteWorkout = async (req, res) => {
+    const { id } = req.params; 
+
+    try {
+        const deletedWorkout = await Workout.findOneAndDelete({ _id: id, userId: req.userId });
+
+        if (!deletedWorkout) {
+            return res.status(404).json({ error: 'Workout not found or not authorized.' });
+        }
+
+        res.json({ message: "Workout deleted successfully" }); 
+    } catch (error) {
+        res.status(500).json({ error: 'Error deleting workout.' });
+    }
+};
+
+
+
+// Complete Workout Status
+exports.completeWorkoutStatus = async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const updatedWorkout = await Workout.findOneAndUpdate(
+            { _id: id, userId: req.userId },
+            { status: "completed" }, 
+            { new: true } 
+        );
+
+        if (!updatedWorkout) {
+            return res.status(404).json({ error: 'Workout not found or not authorized.' });
+        }
+
+        const formattedWorkout = {
+            _id: updatedWorkout._id,
+            userId: updatedWorkout.userId,
+            name: updatedWorkout.name,
+            duration: `${updatedWorkout.duration} mins`, 
+            status: updatedWorkout.status,
+            dateAdded: updatedWorkout.dateAdded,
+            __v: updatedWorkout.__v 
+        };
+
+        res.json({
+            message: "workout status updated successfully",
+            updatedWorkout: formattedWorkout 
+        });
+    } catch (error) {
+        res.status(400).json({ error: 'Error updating workout status.' });
+    }
+};
+
+
+middleware/auth.js:
+const jwt = require('jsonwebtoken');
+
+const authenticateToken = (req, res, next) => {
+    const token = req.headers['authorization']?.split(' ')[1];
+    
+    if (!token) return res.sendStatus(401);
+    
+    jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+        if (err) return res.sendStatus(403);
+        req.userId = user.id; 
+        next();
+    });
+};
+
+module.exports = authenticateToken;
+
+middleware/errorHandler.js:
+class AppError extends Error {
+    constructor(message, statusCode) {
+        super(message);
+        this.statusCode = statusCode;
+        this.isOperational = true;
+        
+        Error.captureStackTrace(this, this.constructor); 
+    }
+}
+
+const handleError = (err, req, res, next) => {
+    if (err instanceof AppError) {
+        return res.status(err.statusCode).json({
+            status: 'error',
+            message: err.message,
+        });
+    }
+
+
+    console.error(err);
+
+    return res.status(500).json({
+        status: 'error',
+        message: 'Something went wrong!',
+    });
+};
+
+module.exports = { AppError, handleError };
+
+models/User.js:
+const mongoose = require('mongoose');
+
+const userSchema = new mongoose.Schema({
+    email: { type: String, required: true, unique: true },
+    password: { type: String, required: true },
+});
+
+module.exports = mongoose.model('User', userSchema);
+
+models/Workout.js:
+const mongoose = require('mongoose');
+
+const workoutSchema = new mongoose.Schema({
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    name: { type: String, required: true },
+    duration: { type: Number, required: true }, 
+    status: { type: String, enum: ['completed', 'pending'], default: 'pending' },
+    dateAdded: { type: Date, default: Date.now }
+});
+
+module.exports = mongoose.model('Workout', workoutSchema);
+
+routes/userRoutes.js:
+const express = require('express');
+const { registerUser, loginUser, getUserDetails } = require('../controllers/UserController');
+const authenticateToken = require('../middleware/auth');
+
+const router = express.Router();
+
+// User Routes
+router.post('/register', registerUser);
+router.post('/login', loginUser);
+router.get('/details', authenticateToken, getUserDetails); 
+
+module.exports = router;
+
+routes/workoutRoutes.js:
+const express = require('express');
+const {
+    addWorkout,
+    getMyWorkouts,
+    updateWorkout,
+    deleteWorkout,
+    completeWorkoutStatus,
+} = require('../controllers/WorkoutController');
+const authenticateToken = require('../middleware/auth');
+
+const router = express.Router();
+
+// Workout Routes
+router.post('/addWorkout', authenticateToken, addWorkout);
+router.get('/getMyWorkouts', authenticateToken, getMyWorkouts);
+router.patch('/updateWorkout/:id', authenticateToken, updateWorkout);
+router.delete('/deleteWorkout/:id', authenticateToken, deleteWorkout);
+router.patch('/completeWorkoutStatus/:id', authenticateToken, completeWorkoutStatus);
+
+module.exports = router;
+
+index.js:
+require('dotenv').config();
+
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors'); 
+const userRoutes = require('./routes/userRoutes'); 
+const workoutRoutes = require('./routes/workoutRoutes'); 
+const { handleError } = require('./middleware/errorHandler'); 
+
+const app = express();
+
+// Middleware setup
+app.use(cors());
+app.use(express.json()); 
+
+mongoose.connect(process.env.MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+})
+.then(() => console.log("MongoDB connected"))
+.catch(err => console.error(err));
+
+// Routes
+app.use('/users', userRoutes); 
+app.use('/workouts', workoutRoutes); 
+
+app.use(handleError);
+
+// Start the server
+const PORT = process.env.PORT || 5000; 
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});

@@ -2,9 +2,9 @@ class AppError extends Error {
     constructor(message, statusCode) {
         super(message);
         this.statusCode = statusCode;
-        this.isOperational = true; // Indicates whether this is an operational error or a programming error.
+        this.isOperational = true;
         
-        Error.captureStackTrace(this, this.constructor); // Capture stack trace for debugging.
+        Error.captureStackTrace(this, this.constructor); 
     }
 }
 
@@ -16,8 +16,8 @@ const handleError = (err, req, res, next) => {
         });
     }
 
-    // Handle other errors (programming errors)
-    console.error(err); // Log the error for debugging.
+
+    console.error(err);
 
     return res.status(500).json({
         status: 'error',
